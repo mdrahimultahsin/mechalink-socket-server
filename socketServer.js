@@ -216,7 +216,9 @@ async function start() {
       });
     });
 
-    
+    app.get("/", (req, res) => {
+      res.send("Socket.IO server is running!");
+    });
 
     server.listen(PORT, () => {
       const host = process.env.PORT
