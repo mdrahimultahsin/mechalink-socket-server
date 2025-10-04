@@ -1,15 +1,15 @@
 import express from "express";
 import http from "http";
-import { Server } from "socket.io";
+import {Server} from "socket.io";
 import dotenv from "dotenv";
-import { collections, dbConnect } from "./dbConnect.js";
-import { ObjectId } from "mongodb";
+import {collections, dbConnect} from "./dbConnect.js";
+import {ObjectId} from "mongodb";
 
 dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*" } });
+const io = new Server(server, {cors: {origin: "*"}});
 const PORT = process.env.PORT || 5000;
 
 app.use(express.json());
@@ -32,62 +32,80 @@ async function start() {
     // -----------------------------
     const sendNotification = async (filter, notif, socketEvent) => {
       // Use $addToSet to avoid duplicates
-      await users.updateMany(filter, { $addToSet: { notifications: notif } });
+      await users.updateMany(filter, {$addToSet: {notifications: notif}});
       io.emit(socketEvent, notif);
     };
 
     // -----------------------------
     // WATCH: Service Requests
     // -----------------------------
-    serviceRequests.watch([], { fullDocument: "updateLookup" }).on("change", async (change) => {
-      try {
-        const fullDoc = change.fullDocument;
+    serviceRequests
+      .watch([], {fullDocument: "updateLookup"})
+      .on("change", async (change) => {
+        try {
+          const fullDoc = change.fullDocument;
 
-        if (change.operationType === "insert") {
-          const notif = {
-            _id: `serviceRequest_${fullDoc._id.toString()}`, // deterministic _id
-            message: "New service request added!",
-            type: "serviceRequest",
-            data: fullDoc,
-            createdAt: new Date(),
-            read: false,
-            userEmail: fullDoc.userEmail,
-          };
-
-          await sendNotification({ email: fullDoc.userEmail }, notif, "serviceRequestNotification");
-          await sendNotification({ role: { $in: ["mechanic", "admin"] } }, notif, "serviceRequestNotification");
-        }
-
-        if (change.operationType === "update") {
-          const updatedFields = change.updateDescription.updatedFields;
-          if (updatedFields.assignedShopId) {
-            const shopDoc = await mechanicShops.findOne({
-              _id: new ObjectId(updatedFields.assignedShopId),
-            });
-            const shopName = shopDoc?.shop?.shopName || "Assigned Shop";
-
+          if (change.operationType === "insert") {
             const notif = {
-              _id: `assignment_${fullDoc._id.toString()}`,
-              message: `Service request assigned to "${shopName}"`,
-              type: "assignment",
-              data: {
-                serviceId: fullDoc._id,
-                shopId: updatedFields.assignedShopId,
-                assignedUserId: fullDoc.userId,
-              },
+              _id: `serviceRequest_${fullDoc._id.toString()}`, // deterministic _id
+              message: "New service request added!",
+              type: "serviceRequest",
+              data: fullDoc,
               createdAt: new Date(),
               read: false,
               userEmail: fullDoc.userEmail,
             };
 
-            await sendNotification({ email: fullDoc.userEmail }, notif, "assignmentNotification");
-            await sendNotification({ role: "admin" }, notif, "assignmentNotification");
+            await sendNotification(
+              {email: fullDoc.userEmail},
+              notif,
+              "serviceRequestNotification"
+            );
+            await sendNotification(
+              {role: {$in: ["mechanic", "admin"]}},
+              notif,
+              "serviceRequestNotification"
+            );
           }
+
+          if (change.operationType === "update") {
+            const updatedFields = change.updateDescription.updatedFields;
+            if (updatedFields.assignedShopId) {
+              const shopDoc = await mechanicShops.findOne({
+                _id: new ObjectId(updatedFields.assignedShopId),
+              });
+              const shopName = shopDoc?.shop?.shopName || "Assigned Shop";
+
+              const notif = {
+                _id: `assignment_${fullDoc._id.toString()}`,
+                message: `Service request assigned to "${shopName}"`,
+                type: "assignment",
+                data: {
+                  serviceId: fullDoc._id,
+                  shopId: updatedFields.assignedShopId,
+                  assignedUserId: fullDoc.userId,
+                },
+                createdAt: new Date(),
+                read: false,
+                userEmail: fullDoc.userEmail,
+              };
+
+              await sendNotification(
+                {email: fullDoc.userEmail},
+                notif,
+                "assignmentNotification"
+              );
+              await sendNotification(
+                {role: "admin"},
+                notif,
+                "assignmentNotification"
+              );
+            }
+          }
+        } catch (err) {
+          console.error("❌ ServiceRequests watcher error:", err);
         }
-      } catch (err) {
-        console.error("❌ ServiceRequests watcher error:", err);
-      }
-    });
+      });
 
     // -----------------------------
     // WATCH: Mechanic Shops
@@ -105,7 +123,11 @@ async function start() {
           userEmail: fullDoc.userEmail,
         };
 
-        await sendNotification({ role: "admin" }, notif, "mechanicShopNotification");
+        await sendNotification(
+          {role: "admin"},
+          notif,
+          "mechanicShopNotification"
+        );
       }
     });
 
@@ -125,7 +147,11 @@ async function start() {
           userEmail: "all",
         };
 
-        await sendNotification({ role: { $in: ["user", "mechanic"] } }, notif, "announcementNotification");
+        await sendNotification(
+          {role: {$in: ["user", "mechanic"]}},
+          notif,
+          "announcementNotification"
+        );
       }
     });
 
@@ -145,7 +171,11 @@ async function start() {
           userEmail: "all",
         };
 
-        await sendNotification({ role: { $in: ["user", "mechanic"] } }, notif, "couponNotification");
+        await sendNotification(
+          {role: {$in: ["user", "mechanic"]}},
+          notif,
+          "couponNotification"
+        );
       }
     });
 
@@ -156,10 +186,18 @@ async function start() {
       console.log("⚡ User connected:", socket.id);
 
       socket.on("joinChat", (chatId) => socket.join(chatId));
-      socket.on("sendMessage", (msg) => io.to(msg.chatId).emit("newMessage", msg));
-      socket.on("typing", (chatId, senderId) => socket.to(chatId).emit("typing", chatId, senderId));
-      socket.on("stopTyping", (chatId, senderId) => socket.to(chatId).emit("stopTyping", chatId, senderId));
-      socket.on("disconnect", () => console.log("❌ User disconnected:", socket.id));
+      socket.on("sendMessage", (msg) =>
+        io.to(msg.chatId).emit("newMessage", msg)
+      );
+      socket.on("typing", (chatId, senderId) =>
+        socket.to(chatId).emit("typing", chatId, senderId)
+      );
+      socket.on("stopTyping", (chatId, senderId) =>
+        socket.to(chatId).emit("stopTyping", chatId, senderId)
+      );
+      socket.on("disconnect", () =>
+        console.log("❌ User disconnected:", socket.id)
+      );
     });
 
     // -----------------------------
@@ -167,8 +205,14 @@ async function start() {
     // -----------------------------
     app.get("/", (req, res) => res.send("🚀 Socket.IO server running!"));
 
+    // -----------------------------
+    // Server Listen
+    // -----------------------------
     server.listen(PORT, () => {
-      console.log(`✅ Server running on ${process.env.PORT ? process.env.PORT : "http://localhost:" + PORT}`);
+      const host = process.env.PORT
+        ? `https://mechalink-socket-server-production.up.railway.app/`
+        : `http://localhost:${PORT}`;
+      console.log(`✅ Socket.IO server running on ${host}`);
     });
   } catch (err) {
     console.error("❌ Server error:", err);
